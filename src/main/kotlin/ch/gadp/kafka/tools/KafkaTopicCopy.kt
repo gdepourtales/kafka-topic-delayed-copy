@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.util.ArrayList
 
-private val doc = """
+val kafkaTopicCopyDoc = """
     Usage:
     KafkaTopicDelayedCopy [--from-kafka FROM_KAFKA] --from FROM_TOPIC [--to-kafka TO_KAFKA] --to TO_TOPIC --group-id GROUP_ID [--dry-run] [--start-position START_POSITION]
 
@@ -20,7 +20,7 @@ private val doc = """
     --to TO_TOPIC                   The name of the topic where copy the messages
     --group-id GROUP_ID             The consumer group to use for reading and writing the messages
     --dry-run                       Does not copy. Only log the record offset copied
-    --start-position START_POSITION Specifies if the offset from which start the copy processDelayedCopy. A value of -1 means current position. [default: -1]
+    --start-position START_POSITION Specifies if the offset from which start the copy processDelayedCopy.
 
 """
 
@@ -33,7 +33,7 @@ fun main(args: Array<String>) {
         logger.error("Uncaught exception in $thread:", throwable)
     }
 
-    val opts = Docopt(doc).parse(args.toList())
+    val opts = Docopt(kafkaTopicCopyDoc).parse(args.toList())
 
     val fromKafka = opts["--from-kafka"].toString()
     val fromTopic = opts["--from"].toString()
@@ -41,7 +41,7 @@ fun main(args: Array<String>) {
     val toTopic = opts["--to"] as String
     val groupId = opts["--group-id"] as String
     val dryRun = opts.containsKey("--dry-run")
-    val startPosition = opts["--start-position"].toString().toLong()
+    val startPosition = (opts["--start-position"] ?: -1).toString().toLong()
 
     processCopy(fromKafka, fromTopic, toKafka, toTopic, groupId, dryRun, startPosition)
 }
@@ -61,7 +61,6 @@ fun processCopy(fromKafka: String,
 
     copy(
             consumer = consumer,
-            fromTopic = fromTopic,
             producer = producer,
             toTopic = toTopic,
             startPosition = startPosition
@@ -74,7 +73,6 @@ fun processCopy(fromKafka: String,
 
 fun copy(
         consumer: Consumer<ByteArray, ByteArray>,
-        fromTopic: String,
         producer: Producer<ByteArray, ByteArray>,
         toTopic: String,
         startPosition: Long
@@ -103,6 +101,7 @@ fun copy(
             writeRecords(producer = producer, toTopic = toTopic, records = buffer)
             consumer.commitSync()
             buffer.clear()
+            emptyBatchCount = 0
         } else if (buffer.isEmpty() && records.isEmpty) {
             emptyBatchCount++
         }
