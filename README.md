@@ -1,33 +1,30 @@
 # Kafka Simple Copy
 
-This tool copies the last messages of a topic to another topic and exits gracefully when no more messages are available
-
-## Usage
+This simple tool copies the last messages of a topic to another topic and exits gracefully when no more messages are available
 
     Usage:
-    KafkaTopicDelayedCopy [--from-kafka FROM_KAFKA] 
+    KafkaTopicCopy [--from-kafka FROM_KAFKA]
                           --from FROM_TOPIC 
                           [--to-kafka TO_KAFKA] 
                           --to TO_TOPIC 
                           --group-id GROUP_ID 
-                          [--dry-run] 
                           [--start-position START_POSITION]
+                          [--dry-run]
 
     Options:
     --from-kafka FROM_KAFKA         The Kafka source bootstrap servers list including port. [default: localhost:9092]
-    --to-kafka TO_KAFKA             The Kafka destination bootstrap servers list including port. If omitted, same as specified in the argument --from-kafka
-    --from FROM_TOPIC               The name of the topic to read messages from
-    --to TO_TOPIC                   The name of the topic where copy the messages
-    --group-id GROUP_ID             The consumer group to use for reading and writing the messages
+    --to-kafka TO_KAFKA             The Kafka destination bootstrap servers list including port. If omitted, same as from-kafka
+    --from FROM_TOPIC               The topic to read messages from
+    --to TO_TOPIC                   The topic to write messages to
+    --group-id GROUP_ID             The consumer group to remember the consumed offsets.
+    --start-position START_POSITION An optional offset from which to start the copy. If omitted, start from where we left off
     --dry-run                       Does not copy. Only log the record offset copied
-    --start-position START_POSITION Specifies if the offset from which start the copy processDelayedCopy. A value of -1 means current position. [default: -1]
 
 
 
 # Kafka Delayed Copy
 
-This simple tool copies from one topic to another Kafka records having a timestamp before 
-a given delay against a reference time (current system time).
+This tool copies from one topic to another records having a timestamp before a given delay against a reference time (current system time).
 
 ## Use case
 
