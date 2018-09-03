@@ -1,5 +1,5 @@
-import ch.gadp.kafka.tools.buildConsumer
-import ch.gadp.kafka.tools.processDelayedCopy
+package ch.gadp.kafka.tools
+
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.AdminClientConfig
 import org.apache.kafka.clients.producer.KafkaProducer
@@ -10,47 +10,62 @@ import java.time.Duration
 import java.util.*
 import kotlin.test.assertEquals
 
-class KafkaTopicDelayedCopyIntegrationTest {
+class KafkaTopicCopyIntegrationTest {
 
     @Test
     fun should_copy_only_part() {
-        val referenceTimeMs = 1000L
-        val delayMs = 500L
-        val fromTopic = "delayed_copy_test_from_topic"
-        val toTopic = "delayed_copy_test_to_topic"
-        val groupId = "delayed_copy_test_group_id"
+        val fromTopic = "copy_test_from_topic"
+        val toTopic = "copy_test_to_topic"
+        val groupId = "copy_test_group_id"
         val kafka = "localhost:9092"
 
         cleanEnvironment(kafkaServer = kafka, topics = listOf(fromTopic, toTopic), groupIds = listOf(groupId))
 
-        addRecords(kafka, fromTopic)
+        addRecords(kafka, fromTopic, 6)
 
-        processDelayedCopy(
+        processCopy(
                 fromKafka = kafka,
                 fromTopic = fromTopic,
                 toTopic = toTopic,
-                referenceTimeMs = referenceTimeMs,
-                delayMs = delayMs,
                 groupId = groupId,
                 startPosition = 0
         )
 
-        // Check that we have copied only 3 records in the toTopic
+        // Check that we have copied all records in the toTopic
         val toConsumer = buildConsumer(kafka, groupId)
         toConsumer.subscribe(listOf(toTopic))
         toConsumer.seekToBeginning(toConsumer.assignment())
 
-        val toRecords = toConsumer.poll(Duration.ofMillis(1000))
-        assertEquals(2, toRecords.count())
+        val toRecords01 = toConsumer.poll(Duration.ofMillis(1000))
+        assertEquals(6, toRecords01.count())
 
 
-        // Check that we have 4 remaining records in the fromTopic and that any consumer with same groupId starts at the
-        // correct position
         val fromConsumer = buildConsumer(kafka, groupId)
         fromConsumer.subscribe(listOf(fromTopic))
 
-        val fromRecords = fromConsumer.poll(Duration.ofMillis(1000))
-        assertEquals(4, fromRecords.count())
+        // Check that we don't have any record left in the from topic for the goup id
+        val fromRecords01 = fromConsumer.poll(Duration.ofMillis(1000))
+        assertEquals(0, fromRecords01.count())
+
+
+        // Add new records
+        addRecords(kafka, fromTopic, 20)
+
+        processCopy(
+                fromKafka = kafka,
+                fromTopic = fromTopic,
+                toTopic = toTopic,
+                groupId = groupId,
+                startPosition = 0
+        )
+
+        // Check that toConsumer contains the new messages
+        val toRecords02 = toConsumer.poll(Duration.ofMillis(1000))
+        assertEquals(10, toRecords02.count())
+
+        // Check that we don't have any record left in the from topic for the goup id
+        val fromRecords02 = fromConsumer.poll(Duration.ofMillis(1000))
+        assertEquals(0, fromRecords02.count())
 
     }
 
@@ -73,7 +88,7 @@ class KafkaTopicDelayedCopyIntegrationTest {
     /**
      * Adds some records
      */
-    private fun addRecords(kafkaServer: String, topic: String) {
+    private fun addRecords(kafkaServer: String, topic: String, count:Int) {
 
         val properties = Properties()
         properties["bootstrap.servers"] = kafkaServer
@@ -87,13 +102,11 @@ class KafkaTopicDelayedCopyIntegrationTest {
 
         val producer = KafkaProducer<String, String>(properties)
 
-        // Create 3 records before the delay
-        producer.send(ProducerRecord<String, String>(topic, 0, 250L, "Key-1", "Data for key 1"))
-        producer.send(ProducerRecord<String, String>(topic, 0, 499L, "Key-2", "Data for key 2"))
-        producer.send(ProducerRecord<String, String>(topic, 0, 500L, "Key-3", "Data for key 3"))
-        producer.send(ProducerRecord<String, String>(topic, 0, 750L, "Key-4", "Data for key 4"))
-        producer.send(ProducerRecord<String, String>(topic, 0, 1000L, "Key-5", "Data for key 5"))
-        producer.send(ProducerRecord<String, String>(topic, 0, 1200L, "Key-6", "Data for key 6"))
+        val random = Random()
+        for (i in (1..count)) {
+            val key = random.nextInt(100000)
+            producer.send(ProducerRecord<String, String>(topic, "Key-$key", "Data for key $key"))
+        }
 
         producer.flush()
         producer.close()

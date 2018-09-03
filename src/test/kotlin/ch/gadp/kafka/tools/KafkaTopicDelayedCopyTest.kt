@@ -1,6 +1,5 @@
-import ch.gadp.kafka.tools.buildProducer
-import ch.gadp.kafka.tools.calculateTotalDelay
-import ch.gadp.kafka.tools.delayedCopy
+package ch.gadp.kafka.tools
+
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.clients.consumer.MockConsumer
 import org.apache.kafka.clients.consumer.OffsetResetStrategy
