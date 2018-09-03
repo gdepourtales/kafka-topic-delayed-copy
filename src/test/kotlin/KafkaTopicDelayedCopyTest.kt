@@ -1,6 +1,6 @@
 import ch.gadp.kafka.tools.buildProducer
 import ch.gadp.kafka.tools.calculateTotalDelay
-import ch.gadp.kafka.tools.copy
+import ch.gadp.kafka.tools.delayedCopy
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.clients.consumer.MockConsumer
 import org.apache.kafka.clients.consumer.OffsetResetStrategy
@@ -45,7 +45,7 @@ class KafkaTopicDelayedCopyTest {
         addRecords(consumer, fromTopic)
 
         val producer_500 = buildProducer("", true) as MockProducer
-        copy(consumer, fromTopic, producer_500, toTopic, referenceTimeMs, 500L, -1)
+        delayedCopy(consumer, producer_500, toTopic, referenceTimeMs, 500L, -1)
         assertEquals(3, producer_500.history().size)
         assertEquals(100L, producer_500.history()[0].timestamp())
         assertEquals(250L, producer_500.history()[1].timestamp())

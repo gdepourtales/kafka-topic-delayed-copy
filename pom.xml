@@ -118,7 +118,8 @@
                 <version>2.21.0</version>
                 <configuration>
                     <excludes>
-                        <exclude>DelayedCopyIntegrationTest</exclude>
+                        <exclude>KafkaTopicDelayedCopyIntegrationTest</exclude>
+                        <exclude>KafkaTopicCopyIntegrationTest</exclude>
                     </excludes>
                 </configuration>
             </plugin>

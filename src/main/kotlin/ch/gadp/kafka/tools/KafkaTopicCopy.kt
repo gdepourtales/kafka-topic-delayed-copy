@@ -7,12 +7,11 @@ import org.apache.kafka.clients.producer.Producer
 import org.docopt.Docopt
 import org.slf4j.LoggerFactory
 import java.time.Duration
-import java.util.*
-
+import java.util.ArrayList
 
 private val doc = """
     Usage:
-    KafkaTopicDelayedCopy [--from-kafka FROM_KAFKA] --from FROM_TOPIC [--to-kafka TO_KAFKA] --to TO_TOPIC --group-id GROUP_ID [--delay-ms DELAY_MS] [--delay-sec DELAY_SEC] [--delay-min DELAY_MIN] [--delay-hours DELAY_HOURS] [--delay-days DELAY_DAYS] [--dry-run] [--start-position START_POSITION]
+    KafkaTopicDelayedCopy [--from-kafka FROM_KAFKA] --from FROM_TOPIC [--to-kafka TO_KAFKA] --to TO_TOPIC --group-id GROUP_ID [--dry-run] [--start-position START_POSITION]
 
     Options:
     --from-kafka FROM_KAFKA         The Kafka source bootstrap servers list including port. [default: localhost:9092]
@@ -20,21 +19,16 @@ private val doc = """
     --from FROM_TOPIC               The name of the topic to read messages from
     --to TO_TOPIC                   The name of the topic where copy the messages
     --group-id GROUP_ID             The consumer group to use for reading and writing the messages
-    --delay-ms DELAY_MS             The delay in milliseconds. This value adds up to the other --delay-* arguments. [default: 0]
-    --delay-sec DELAY_SEC           The delay in seconds. This value adds up to the other --delay-* arguments. [default: 0]
-    --delay-min DELAY_MIN           The delay in minutes. This value adds up to the other --delay-* arguments. [default: 0]
-    --delay-hours DELAY_HOURS       The delay in hours. This value adds up to the other --delay-* arguments. [default: 0]
-    --delay-days DELAY_DAYS         The delay in days. This value adds up to the other --delay-* arguments. [default: 0]
     --dry-run                       Does not copy. Only log the record offset copied
     --start-position START_POSITION Specifies if the offset from which start the copy processDelayedCopy. A value of -1 means current position. [default: -1]
 
 """
 
+
 private val logger = LoggerFactory.getLogger("KafkaTopicDelayedCopy")
 
 
 fun main(args: Array<String>) {
-
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
         logger.error("Uncaught exception in $thread:", throwable)
     }
@@ -46,45 +40,30 @@ fun main(args: Array<String>) {
     val toKafka = (opts["--to-kafka"] ?: fromKafka).toString()
     val toTopic = opts["--to"] as String
     val groupId = opts["--group-id"] as String
-    val delayMs = opts["--delay-ms"].toString().toLong()
-    val delaySec = opts["--delay-sec"].toString().toLong()
-    val delayMin = opts["--delay-min"].toString().toLong()
-    val delayHours = opts["--delay-hours"].toString().toLong()
-    val delayDays = opts["--delay-days"].toString().toLong()
     val dryRun = opts.containsKey("--dry-run")
     val startPosition = opts["--start-position"].toString().toLong()
 
-    processDelayedCopy(fromKafka, fromTopic, toKafka, toTopic, groupId, delayMs, delaySec, delayMin, delayHours, delayDays, dryRun, startPosition)
+    processCopy(fromKafka, fromTopic, toKafka, toTopic, groupId, dryRun, startPosition)
 }
 
-
-fun processDelayedCopy(fromKafka: String,
+fun processCopy(fromKafka: String,
                        fromTopic: String,
                        toKafka: String = fromKafka,
                        toTopic: String,
                        groupId: String,
-                       delayMs: Long = 0L,
-                       delaySec: Long = 0L,
-                       delayMin: Long = 0L,
-                       delayHours: Long = 0L,
-                       delayDays: Long = 0L,
                        dryRun: Boolean = false,
-                       startPosition: Long = -1L,
-                       referenceTimeMs: Long = System.currentTimeMillis()) {
-
-    val totalDelayMs = calculateTotalDelay(delayMs, delaySec, delayMin, delayHours, delayDays)
+                       startPosition: Long = -1L) {
 
     val consumer = buildConsumer(kafkaServer = fromKafka, groupId = groupId)
     consumer.subscribe(listOf(fromTopic))
 
     val producer = buildProducer(kafkaServer = toKafka, mock = dryRun)
 
-    delayedCopy(
+    copy(
             consumer = consumer,
+            fromTopic = fromTopic,
             producer = producer,
             toTopic = toTopic,
-            referenceTimeMs = referenceTimeMs,
-            delayMs = totalDelayMs,
             startPosition = startPosition
     )
 
@@ -93,16 +72,11 @@ fun processDelayedCopy(fromKafka: String,
 }
 
 
-/**
- * Copy the messages until the first message which timestamp is after the start time minus the delay
- */
-
-fun delayedCopy(
+fun copy(
         consumer: Consumer<ByteArray, ByteArray>,
+        fromTopic: String,
         producer: Producer<ByteArray, ByteArray>,
         toTopic: String,
-        referenceTimeMs: Long,
-        delayMs: Long,
         startPosition: Long
 ) {
 
@@ -114,54 +88,26 @@ fun delayedCopy(
         }
     }
 
-    val timestampLimit = referenceTimeMs - delayMs
-
     val buffer = ArrayList<ConsumerRecord<ByteArray, ByteArray>>()
     val maxEmptyBatches = 10
-
     var emptyBatchCount = 0
-    var lastOffset = -1L
-    logger.info("Starting processing messages with timestamps up to $timestampLimit")
+    logger.info("Starting processing messages")
 
     while (emptyBatchCount < maxEmptyBatches) {
         val records = consumer.poll(Duration.ofMillis(100))
         for (record in records) {
-            // Only add record if their timestamp is before the current time - the delay
-            if (record.timestamp() < timestampLimit) {
-                buffer.add(record)
-            }
+            buffer.add(record)
         }
         // Write the records and commit the offset when the buffer is full
         if (buffer.isNotEmpty()) {
             writeRecords(producer = producer, toTopic = toTopic, records = buffer)
-            lastOffset = buffer.last().offset()
+            consumer.commitSync()
             buffer.clear()
         } else if (buffer.isEmpty() && records.isEmpty) {
             emptyBatchCount++
         }
     }
 
-    // Only if we have copied some records we update the consumer offset
-    if (lastOffset != -1L) {
-        for (topicPartition in consumer.assignment()) {
-            consumer.commitSync(mapOf(topicPartition to OffsetAndMetadata(lastOffset + 1)))
-        }
-    }
 
-    logger.info("Done processing messages with timestamps up to $timestampLimit")
+    logger.info("Done processing messages")
 }
-
-fun calculateTotalDelay(
-        delayMs: Long = 0L,
-        delaySec: Long = 0L,
-        delayMin: Long = 0L,
-        delayHours: Long = 0L,
-        delayDays: Long = 0L
-) = delayMs +
-        delaySec * 1000L +
-        delayMin * 1000L * 60L +
-        delayHours * 1000L * 60L * 60L +
-        delayDays * 1000L * 60L * 60L * 24L
-
-
-

@@ -1,5 +1,5 @@
 import ch.gadp.kafka.tools.buildConsumer
-import ch.gadp.kafka.tools.process
+import ch.gadp.kafka.tools.processDelayedCopy
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.AdminClientConfig
 import org.apache.kafka.clients.producer.KafkaProducer
@@ -10,7 +10,7 @@ import java.time.Duration
 import java.util.*
 import kotlin.test.assertEquals
 
-class DelayedCopyIntegrationTest {
+class KafkaTopicDelayedCopyIntegrationTest {
 
     @Test
     fun should_copy_only_part() {
@@ -25,7 +25,7 @@ class DelayedCopyIntegrationTest {
 
         addRecords(kafka, fromTopic)
 
-        process(
+        processDelayedCopy(
                 fromKafka = kafka,
                 fromTopic = fromTopic,
                 toTopic = toTopic,
