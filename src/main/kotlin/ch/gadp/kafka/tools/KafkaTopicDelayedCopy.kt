@@ -58,10 +58,29 @@ fun main(args: Array<String>) {
     val dryRun = opts.containsKey("--dry-run")
     val startPosition = opts["--start-position"].toString().toLong()
 
+    process(fromKafka, fromTopic, toKafka, toTopic, groupId, delayMs, delaySec, delayMin, delayHours, delayDays, dryRun, startPosition)
+}
+
+
+fun process(fromKafka: String,
+            fromTopic: String,
+            toKafka: String = fromKafka,
+            toTopic: String,
+            groupId: String,
+            delayMs: Long = 0L,
+            delaySec: Long = 0L,
+            delayMin: Long = 0L,
+            delayHours: Long = 0L,
+            delayDays: Long = 0L,
+            dryRun: Boolean = false,
+            startPosition: Long = -1L,
+            referenceTimeMs: Long = System.currentTimeMillis()) {
 
     val totalDelayMs = calculateTotalDelay(delayMs, delaySec, delayMin, delayHours, delayDays)
 
-    val consumer = buildConsumer(kafkaServer = fromKafka, groupId = groupId, topic = fromTopic)
+    val consumer = buildConsumer(kafkaServer = fromKafka, groupId = groupId)
+    consumer.subscribe(listOf(fromTopic))
+
     val producer = buildProducer(kafkaServer = toKafka, mock = dryRun)
 
     copy(
@@ -69,7 +88,7 @@ fun main(args: Array<String>) {
             fromTopic = fromTopic,
             producer = producer,
             toTopic = toTopic,
-            referenceTimeMs = System.currentTimeMillis(),
+            referenceTimeMs = referenceTimeMs,
             delayMs = totalDelayMs,
             startPosition = startPosition
     )
@@ -97,24 +116,19 @@ fun copy(
 
     if (startPosition > -1) {
         // Dummy poll call to allow seek
-        consumer.poll(Duration.ofMillis(100))
-        partitions.forEach {
-            val topicPartition = TopicPartition(fromTopic, it.partition())
-            if (consumer.assignment().contains(topicPartition)) {
-                consumer.seek(topicPartition, startPosition)
-            }
+        consumer.poll(Duration.ofMillis(1))
+        for (topicPartition in consumer.assignment()) {
+            consumer.commitSync(mapOf(topicPartition to OffsetAndMetadata(startPosition)))
         }
     }
 
     val timestampLimit = referenceTimeMs - delayMs
 
-    producer.initTransactions()
-
     val buffer = ArrayList<ConsumerRecord<ByteArray, ByteArray>>()
     val maxEmptyBatches = 10
 
     var emptyBatchCount = 0
-
+    var lastOffset = -1L
     logger.info("Starting processing messages with timestamps up to $timestampLimit")
 
     while (emptyBatchCount < maxEmptyBatches) {
@@ -128,10 +142,17 @@ fun copy(
         // Write the records and commit the offset when the buffer is full
         if (buffer.isNotEmpty()) {
             writeRecords(producer = producer, toTopic = toTopic, records = buffer)
-            consumer.commitSync()
+            lastOffset = buffer.last().offset()
             buffer.clear()
         } else if (buffer.isEmpty() && records.isEmpty) {
             emptyBatchCount++
+        }
+    }
+
+    // Only if we have copied some records we update the consumer offset
+    if (lastOffset != -1L) {
+        for (topicPartition in consumer.assignment()) {
+            consumer.commitSync(mapOf(topicPartition to OffsetAndMetadata(lastOffset + 1)))
         }
     }
 
@@ -152,29 +173,29 @@ fun calculateTotalDelay(
 
 
 private fun writeRecords(producer: Producer<ByteArray, ByteArray>, toTopic: String, records: ArrayList<ConsumerRecord<ByteArray, ByteArray>>) {
-    producer.beginTransaction()
     records.forEach {
         logger.info("Copying message at offset ${it.offset()} with timestamp ${it.timestamp()}")
         producer.send(ProducerRecord<ByteArray, ByteArray>(toTopic, null, it.timestamp(), it.key(), it.value()))
     }
-    producer.commitTransaction()
+    producer.flush()
 }
 
 
 /**
  * Builds the consumer. We choose byte arrays to avoid any conversion
  */
-fun buildConsumer(kafkaServer: String, groupId: String, topic:String): Consumer<ByteArray, ByteArray> {
+fun buildConsumer(kafkaServer: String, groupId: String): Consumer<ByteArray, ByteArray> {
     val properties = Properties()
     properties["bootstrap.servers"] = kafkaServer
     properties["group.id"] = groupId
     properties["enable.auto.commit"] = "false"
+    properties["max.poll.interval.ms"] = 200
+    properties["max.poll.records"] = 10
     properties["key.deserializer"] = "org.apache.kafka.common.serialization.ByteArrayDeserializer"
     properties["value.deserializer"] = "org.apache.kafka.common.serialization.ByteArrayDeserializer"
-    val consumer = KafkaConsumer<ByteArray, ByteArray>(properties)
-    consumer.subscribe(listOf(topic))
+    properties["auto.offset.reset"] = "earliest"
 
-    return consumer
+    return KafkaConsumer(properties)
 }
 
 /**
