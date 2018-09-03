@@ -42,15 +42,7 @@ class KafkaTopicDelayedCopyTest {
 
         consumer.assign(listOf(TopicPartition(fromTopic, 0)))
 
-        // Create 3 records before the delay
-        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(fromTopic, 0, 0L, 100L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
-        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(fromTopic, 0, 1L, 250L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
-        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(fromTopic, 0, 2L, 499L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
-        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(fromTopic, 0, 3L, 500L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
-        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(fromTopic, 0, 4L, 750L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
-        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(fromTopic, 0, 5L, 1000L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
-        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(fromTopic, 0, 6L, 1200L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
-
+        addRecords(consumer, fromTopic)
 
         val producer_500 = buildProducer("", true) as MockProducer
         copy(consumer, fromTopic, producer_500, toTopic, referenceTimeMs, 500L, -1)
@@ -61,7 +53,17 @@ class KafkaTopicDelayedCopyTest {
         producer_500.history().forEach {
             assertEquals(toTopic, it.topic())
         }
+    }
 
+    private fun addRecords(consumer: MockConsumer<ByteArray, ByteArray>, topic: String) {
+        // Create 3 records before the delay
+        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(topic, 0, 0L, 100L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
+        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(topic, 0, 1L, 250L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
+        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(topic, 0, 2L, 499L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
+        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(topic, 0, 3L, 500L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
+        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(topic, 0, 4L, 750L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
+        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(topic, 0, 5L, 1000L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
+        consumer.addRecord(ConsumerRecord<ByteArray, ByteArray>(topic, 0, 6L, 1200L, TimestampType.CREATE_TIME, 0, 0, 0, ByteArray(0), ByteArray(0)))
 
     }
 }
