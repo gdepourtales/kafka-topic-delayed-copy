@@ -85,7 +85,6 @@ fun process(fromKafka: String,
 
     copy(
             consumer = consumer,
-            fromTopic = fromTopic,
             producer = producer,
             toTopic = toTopic,
             referenceTimeMs = referenceTimeMs,
@@ -104,15 +103,12 @@ fun process(fromKafka: String,
 
 fun copy(
         consumer: Consumer<ByteArray, ByteArray>,
-        fromTopic: String,
         producer: Producer<ByteArray, ByteArray>,
         toTopic: String,
         referenceTimeMs: Long,
         delayMs: Long,
         startPosition: Long
 ) {
-
-    val partitions = consumer.partitionsFor(fromTopic)
 
     if (startPosition > -1) {
         // Dummy poll call to allow seek
@@ -210,7 +206,7 @@ fun buildProducer(kafkaServer: String, mock: Boolean): Producer<ByteArray, ByteA
                 properties["retries"] = 0
                 properties["batch.size"] = 16384
                 properties["linger.ms"] = 1
-                properties["buffer.memory"] = 33554432;
+                properties["buffer.memory"] = 33554432
                 properties["key.serializer"] = "org.apache.kafka.common.serialization.ByteArraySerializer"
                 properties["value.serializer"] = "org.apache.kafka.common.serialization.ByteArraySerializer"
 
